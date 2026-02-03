@@ -1,0 +1,226 @@
+"""Configuration management with pydantic validation."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+
+class OpenRouterConfig(BaseModel):
+    """OpenRouter API configuration."""
+
+    api_key: str = Field(alias="apiKey")
+    default_model: str = Field(
+        default="anthropic/claude-sonnet-4", alias="defaultModel"
+    )
+
+
+class AnthropicConfig(BaseModel):
+    """Anthropic API configuration."""
+
+    api_key: str = Field(alias="apiKey")
+    default_model: str = Field(
+        default="claude-sonnet-4-20250514", alias="defaultModel"
+    )
+
+
+class OpenAIConfig(BaseModel):
+    """OpenAI API configuration."""
+
+    api_key: str = Field(alias="apiKey")
+    default_model: str = Field(default="gpt-4o", alias="defaultModel")
+    base_url: Optional[str] = Field(default=None, alias="baseUrl")
+
+
+class ProvidersConfig(BaseModel):
+    """LLM providers configuration."""
+
+    openrouter: Optional[OpenRouterConfig] = None
+    anthropic: Optional[AnthropicConfig] = None
+    openai: Optional[OpenAIConfig] = None
+
+    model_config = {"populate_by_name": True}
+
+
+class TelegramConfig(BaseModel):
+    """Telegram bot configuration."""
+
+    enabled: bool = False
+    token: str = ""
+    allow_from: list[str] = Field(default_factory=list, alias="allowFrom")
+
+    model_config = {"populate_by_name": True}
+
+
+class ChannelsConfig(BaseModel):
+    """Communication channels configuration."""
+
+    telegram: TelegramConfig = Field(default_factory=TelegramConfig)
+
+
+class WebSearchConfig(BaseModel):
+    """Web search tool configuration."""
+
+    api_key: str = Field(default="", alias="apiKey")
+    provider: str = "brave"
+
+    model_config = {"populate_by_name": True}
+
+
+class ShellConfig(BaseModel):
+    """Shell execution configuration."""
+
+    enabled: bool = True
+    timeout: int = 30
+    confirm_dangerous: bool = Field(default=True, alias="confirmDangerous")
+
+    model_config = {"populate_by_name": True}
+
+
+class ToolsConfig(BaseModel):
+    """Tools configuration."""
+
+    shell: ShellConfig = Field(default_factory=ShellConfig)
+    web_search: WebSearchConfig = Field(
+        default_factory=WebSearchConfig, alias="webSearch"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class MemoryConfig(BaseModel):
+    """Memory system configuration."""
+
+    max_history: int = Field(default=50, alias="maxHistory")
+    semantic_search: bool = Field(default=False, alias="semanticSearch")
+
+    model_config = {"populate_by_name": True}
+
+
+class AgentDefaults(BaseModel):
+    """Agent default settings."""
+
+    model: str = ""  # Empty means use provider's defaultModel
+
+
+class AgentsConfig(BaseModel):
+    """Agents configuration."""
+
+    defaults: AgentDefaults = Field(default_factory=AgentDefaults)
+
+
+class AgentConfig(BaseModel):
+    """Agent runtime configuration."""
+
+    max_iterations: int = Field(default=15, alias="maxIterations")
+    max_tokens_per_session: int = Field(default=50000, alias="maxTokensPerSession")
+    session_timeout: int = Field(default=300, alias="sessionTimeout")
+    system_prompt: str = Field(default="", alias="systemPrompt")
+
+    model_config = {"populate_by_name": True}
+
+
+class DashboardConfig(BaseModel):
+    """Dashboard configuration."""
+
+    enabled: bool = True
+    port: int = 18790
+    password: Optional[str] = None
+
+
+class Config(BaseModel):
+    """Main configuration model."""
+
+    providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
+    channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
+    tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
+    agents: AgentsConfig = Field(default_factory=AgentsConfig)
+    dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
+
+    model_config = {"populate_by_name": True}
+
+    @classmethod
+    def load(cls, config_path: Optional[Path] = None) -> Config:
+        """Load configuration from file."""
+        if config_path is None:
+            config_path = Path.home() / ".nanoclaw" / "config.json"
+
+        if not config_path.exists():
+            raise FileNotFoundError(
+                f"Config not found at {config_path}. Run 'nanoclaw init' first."
+            )
+
+        data = json.loads(config_path.read_text())
+        return cls(**data)
+
+    def get_active_provider(self) -> tuple[str, str, str, Optional[str]]:
+        """
+        Get active provider details.
+
+        Returns: (provider_name, api_key, default_model, base_url)
+        """
+        if self.providers.openrouter:
+            return (
+                "openrouter",
+                self.providers.openrouter.api_key,
+                self.providers.openrouter.default_model,
+                None,
+            )
+        elif self.providers.anthropic:
+            return (
+                "anthropic",
+                self.providers.anthropic.api_key,
+                self.providers.anthropic.default_model,
+                None,
+            )
+        elif self.providers.openai:
+            return (
+                "openai",
+                self.providers.openai.api_key,
+                self.providers.openai.default_model,
+                self.providers.openai.base_url,
+            )
+        else:
+            raise ValueError("No LLM provider configured.")
+
+    def get_default_model(self) -> str:
+        """Get the default model from agents config or provider."""
+        if self.agents.defaults.model:
+            return self.agents.defaults.model
+        _, _, model, _ = self.get_active_provider()
+        return model
+
+
+# Global config instance
+_config: Optional[Config] = None
+
+
+def get_config() -> Config:
+    """Get the global config instance."""
+    global _config
+    if _config is None:
+        _config = Config.load()
+    return _config
+
+
+def set_config(config: Config) -> None:
+    """Set the global config instance."""
+    global _config
+    _config = config
+
+
+def get_workspace_path() -> Path:
+    """Get the workspace directory path."""
+    return Path.home() / ".nanoclaw" / "workspace"
+
+
+def get_data_path() -> Path:
+    """Get the data directory path."""
+    data_dir = Path.home() / ".nanoclaw" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir

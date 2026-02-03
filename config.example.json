@@ -1,0 +1,42 @@
+{
+  "providers": {
+    "openrouter": {
+      "apiKey": "sk-or-YOUR_API_KEY_HERE"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "anthropic/claude-sonnet-4"
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "YOUR_BOT_TOKEN",
+      "allowFrom": ["YOUR_USER_ID"]
+    }
+  },
+  "tools": {
+    "webSearch": {
+      "apiKey": "YOUR_BRAVE_API_KEY"
+    },
+    "shell": {
+      "enabled": true,
+      "timeout": 30,
+      "confirmDangerous": true
+    }
+  },
+  "memory": {
+    "maxHistory": 50,
+    "semanticSearch": false
+  },
+  "agent": {
+    "maxIterations": 15,
+    "maxTokensPerSession": 50000,
+    "sessionTimeout": 300
+  },
+  "dashboard": {
+    "enabled": true,
+    "port": 18790
+  }
+}
