@@ -195,6 +195,11 @@ class ToolRegistry:
                 return "User denied this action."
 
         try:
+            # Handle malformed LLM output: {'parameters': {'query': '...'}}
+            if "parameters" in arguments and len(arguments) == 1:
+                logger.warning(f"Tool {name}: unwrapping nested 'parameters' from LLM")
+                arguments = arguments["parameters"]
+
             result = await tool_info.handler(**arguments)
             return str(result)
         except TypeError as e:
