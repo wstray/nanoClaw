@@ -1,6 +1,6 @@
 # nanoClaw
 
-Ultra-lightweight secure personal AI assistant that lives in Telegram.
+Easy install, 24/7. Ultra-lightweight secure AI assistant inspired by OpenClaw.
 
 ```
 OpenClaw:  430,000 lines, complex setup, security concerns
