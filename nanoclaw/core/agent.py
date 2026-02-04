@@ -160,29 +160,45 @@ class Agent:
             session.increment_iterations()
             logger.debug(f"--- Iteration {iteration + 1} ---")
 
-            # Escalation: if 4+ iterations and still calling tools, nudge LLM to plan
-            # This uses the NEXT iteration's LLM call (costs zero extra tokens)
+            # Escalation: if 4+ iterations and still calling tools, nudge LLM
+            # This is an internal directive, not a request for user-facing output
             if iteration >= 4 and not escalated and len(messages) > 2:
                 last_msg = messages[-1]
                 if last_msg.get("role") == "tool":
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            "You've been working on this for several steps. "
-                            "Pause and plan: what remaining steps do you need? "
-                            "Which can run in parallel? Execute efficiently."
-                        )
-                    })
+                    # Collect successful results to remind LLM what it already has
+                    successes = []
+                    for msg in messages:
+                        if msg.get("role") == "tool":
+                            content = msg.get("content", "")
+                            if not self._is_error_result(content):
+                                # Take first 150 chars of successful result
+                                successes.append(content[:150])
+
+                    nudge = (
+                        "[Internal: You have taken many iterations. "
+                        "Do NOT output a plan to the user. "
+                        "Stop repeating failed calls - try different search terms. "
+                        "Use the successful results you already have. "
+                    )
+                    if successes:
+                        nudge += "Successful results so far: " + " | ".join(successes[-3:]) + " "
+                    nudge += "Answer the user now with available information.]"
+
+                    messages.append({"role": "user", "content": nudge})
                     escalated = True
-                    logger.info(f"Escalating to plan mode after {iteration} iterations")
+                    logger.info(f"Escalating after {iteration} iterations")
 
             # Call LLM
             try:
                 llm_response = await self.llm.chat(messages, tools=tool_schemas)
                 session.add_tokens(llm_response.usage.total_tokens)
             except Exception as e:
-                logger.error(f"LLM call failed: {e}")
-                final_response = f"Error communicating with LLM: {e}"
+                error_text = str(e)
+                # Log full error, truncate for user response
+                logger.error(f"LLM call failed: {error_text[:1000]}")
+                if len(error_text) > 200:
+                    error_text = error_text[:200] + "..."
+                final_response = f"Error communicating with LLM: {error_text}"
                 break
 
             # If text response with no tool calls -> done
@@ -277,8 +293,8 @@ class Agent:
 
             result = await self._execute_tool_safely(tc, session, confirm_callback)
 
-            # Cache the result
-            if tc.name in self.CACHEABLE:
+            # Cache the result only if not an error
+            if tc.name in self.CACHEABLE and not self._is_error_result(result):
                 self.cache.set(cache_key, result)
 
             # Invalidate file_read cache on file_write
@@ -366,6 +382,22 @@ class Agent:
                 output_summary=str(e)[:500],
             )
             return f"ERROR: {tool_call.name} failed - {e}"
+
+    def _is_error_result(self, result: str) -> bool:
+        """Check if result is an error that should not be cached."""
+        error_prefixes = (
+            "Search failed:",
+            "Search rate limited",
+            "Search error:",
+            "ERROR:",
+            "TIMEOUT:",
+            "SECURITY:",
+            "Failed to fetch:",
+            "Network error",
+            "Unknown tool:",
+            "Invalid arguments",
+        )
+        return result.startswith(error_prefixes)
 
     def _should_skip_memory(self, user_message: str) -> bool:
         """Check if we should skip memory extraction for this message."""
