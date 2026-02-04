@@ -10,7 +10,7 @@ nanoClaw:   ~3,000 lines, secure by default, 2-min setup
 ## Features
 
 - **Secure by default** - file system sandbox, shell command filtering, prompt injection defense
-- **Model-agnostic** - Claude, GPT-4, Llama, DeepSeek via OpenRouter or direct API
+- **Model-agnostic** - Claude, GPT-5, DeepSeek, Gemini via OpenRouter or direct API
 - **Ultra-lightweight** - ~3000 lines total, minimal dependencies
 - **2-minute setup** - interactive wizard guides configuration
 - **No open ports** - Telegram polling, dashboard on localhost only
@@ -111,7 +111,7 @@ Config is stored at `~/.nanoclaw/config.json`:
   },
   "agents": {
     "defaults": {
-      "model": "anthropic/claude-sonnet-4"
+      "model": "anthropic/claude-sonnet-4-5"
     }
   },
   "channels": {
@@ -193,11 +193,21 @@ pip install -e ".[dev]"
 pytest
 ```
 
+## Supported Providers
+
+| Provider | Models | Get API Key |
+|----------|--------|-------------|
+| OpenRouter | All major models | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| DeepSeek | deepseek-chat, deepseek-reasoner | [platform.deepseek.com](https://platform.deepseek.com) |
+| Anthropic | Claude Sonnet/Opus/Haiku | [console.anthropic.com](https://console.anthropic.com) |
+| OpenAI | GPT-5 family | [platform.openai.com](https://platform.openai.com) |
+| Local | Ollama, LM Studio | - |
+
 ## Requirements
 
 - Python 3.11+
 - Telegram Bot Token (from @BotFather)
-- LLM API key (OpenRouter, Anthropic, or OpenAI)
+- LLM API key (any provider above)
 - Optional: Brave Search API key
 
 ## License
