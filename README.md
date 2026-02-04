@@ -24,7 +24,9 @@ nanoClaw:   ~3,000 lines, secure by default, 2-min setup
 ### Installation
 
 ```bash
-pip install nanoclaw-ai
+git clone https://github.com/ysz/nanoClaw
+cd nanoclaw
+pip install -e .
 ```
 
 ### Setup
@@ -184,13 +186,17 @@ docker run -d \
 ## Development
 
 ```bash
-# Clone and install
-git clone https://github.com/nanoclaw/nanoclaw
-cd nanoclaw
+# Install with dev dependencies
 pip install -e ".[dev]"
 
 # Run tests
 pytest
+
+# Type check
+mypy nanoclaw/
+
+# Lint
+ruff check nanoclaw/
 ```
 
 ## Supported Providers
