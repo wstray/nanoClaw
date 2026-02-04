@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Callable, Optional
+from typing import Optional
 
 import click
 
@@ -42,7 +42,7 @@ class ConsoleChannel:
                 break
 
             if self.gateway:
-                response = await self.gateway.handle_incoming(
+                response = await self.gateway.handle_incoming(  # type: ignore[attr-defined]
                     channel_id="console",
                     user_id="cli_user",
                     message=user_input,

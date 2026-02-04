@@ -6,7 +6,7 @@ import asyncio
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from nanoclaw.core.logger import get_logger
 
@@ -65,7 +65,7 @@ class Scheduler:
 
             if job["cron_expr"]:
                 try:
-                    from croniter import croniter
+                    from croniter import croniter  # type: ignore[import-untyped]
 
                     last_run = (
                         datetime.fromisoformat(job["last_run"])

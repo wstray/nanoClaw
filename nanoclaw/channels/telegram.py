@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 from nanoclaw.core.logger import get_logger
 
@@ -57,7 +57,7 @@ class TelegramChannel:
 
         # Handle /start command
         self.app.add_handler(
-            MessageHandler(filters.Command(["start"]), self.handle_start)
+            MessageHandler(filters.Command(["start"]), self.handle_start)  # type: ignore[arg-type]
         )
 
         # Handle Yes/No button callbacks

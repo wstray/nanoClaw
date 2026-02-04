@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 from nanoclaw.core.context import ContextBuilder
-from nanoclaw.core.llm import LLMClient, LLMResponse, ToolCall
+from nanoclaw.core.llm import LLMClient, ToolCall
 from nanoclaw.core.logger import get_logger
 from nanoclaw.memory.store import MemoryStore
 from nanoclaw.security.audit import AuditLog
@@ -317,7 +317,7 @@ class Agent:
                 tc = tool_calls[i]
                 results.append((tc, f"ERROR: {item}"))
             else:
-                results.append(item)
+                results.append(item)  # type: ignore[arg-type]
 
         return results
 

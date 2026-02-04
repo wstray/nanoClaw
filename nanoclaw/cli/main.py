@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Callable
 
 import click
 
@@ -44,9 +45,9 @@ def _read_key() -> str:
         try:
             import msvcrt
 
-            ch = msvcrt.getch()
+            ch = msvcrt.getch()  # type: ignore[attr-defined]
             if ch in (b"\x00", b"\xe0"):  # Special key prefix
-                ch2 = msvcrt.getch()
+                ch2 = msvcrt.getch()  # type: ignore[attr-defined]
                 if ch2 == b"H":
                     return "up"
                 elif ch2 == b"P":
@@ -479,7 +480,7 @@ async def show_status() -> None:
     try:
         audit = get_audit_log()
         today = await audit.get_stats_today()
-        click.echo(f"\nToday's activity:")
+        click.echo("\nToday's activity:")
         click.echo(f"  Messages: {today['messages']}")
         click.echo(f"  Tool calls: {today['tool_calls']}")
         click.echo(f"  Tokens: {today['total_tokens']}")
@@ -672,7 +673,7 @@ def _mask_secrets(obj: dict | list | str, key: str = "") -> dict | list | str:
     return obj
 
 
-def _edit_provider(data: dict, save: callable) -> None:
+def _edit_provider(data: dict, save: Callable[[], None]) -> None:
     """Edit LLM provider settings."""
     while True:
         click.echo()
@@ -813,7 +814,7 @@ def _edit_provider(data: dict, save: callable) -> None:
         return  # Exit to main menu after saving
 
 
-def _change_model_only(data: dict, save: callable) -> None:
+def _change_model_only(data: dict, save: Callable[[], None]) -> None:
     """Change model without changing provider."""
     providers = data.get("providers", {})
 
@@ -893,7 +894,7 @@ def _change_model_only(data: dict, save: callable) -> None:
     click.echo("  Saved.")
 
 
-def _edit_telegram(data: dict, save: callable) -> None:
+def _edit_telegram(data: dict, save: Callable[[], None]) -> None:
     """Edit Telegram settings."""
     while True:
         click.echo()
@@ -948,7 +949,7 @@ def _edit_telegram(data: dict, save: callable) -> None:
         click.echo("  Saved.")
 
 
-def _edit_tools(data: dict, save: callable) -> None:
+def _edit_tools(data: dict, save: Callable[[], None]) -> None:
     """Edit tools settings."""
     while True:
         click.echo()

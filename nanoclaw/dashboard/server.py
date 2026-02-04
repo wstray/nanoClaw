@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 import aiohttp.web
 
@@ -72,7 +72,7 @@ class Dashboard:
         """Serve the single-page dashboard HTML."""
         html_path = Path(__file__).parent / "index.html"
         if html_path.exists():
-            return aiohttp.web.FileResponse(html_path)
+            return aiohttp.web.FileResponse(html_path)  # type: ignore[return-value]
         return aiohttp.web.Response(
             text="Dashboard HTML not found", status=404
         )

@@ -200,7 +200,7 @@ class ShellSandbox:
         is_blocked, pattern = self.is_blocked(command)
         if is_blocked:
             logger.warning(f"BLOCKED command: {command} (pattern: {pattern})")
-            raise SecurityError(f"BLOCKED: dangerous command detected")
+            raise SecurityError("BLOCKED: dangerous command detected")
 
         # 2. Check CONFIRM
         if self.needs_confirmation(command) and confirm_callback:
