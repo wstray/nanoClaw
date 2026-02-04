@@ -218,4 +218,4 @@ ruff check nanoclaw/
 
 ## License
 
-BSL 1.1 - See LICENSE file.
+MIT
