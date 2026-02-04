@@ -35,12 +35,20 @@ class OpenAIConfig(BaseModel):
     base_url: Optional[str] = Field(default=None, alias="baseUrl")
 
 
+class DeepSeekConfig(BaseModel):
+    """DeepSeek API configuration."""
+
+    api_key: str = Field(alias="apiKey")
+    default_model: str = Field(default="deepseek-chat", alias="defaultModel")
+
+
 class ProvidersConfig(BaseModel):
     """LLM providers configuration."""
 
     openrouter: Optional[OpenRouterConfig] = None
     anthropic: Optional[AnthropicConfig] = None
     openai: Optional[OpenAIConfig] = None
+    deepseek: Optional[DeepSeekConfig] = None
 
     model_config = {"populate_by_name": True}
 
@@ -164,7 +172,15 @@ class Config(BaseModel):
 
         Returns: (provider_name, api_key, default_model, base_url)
         """
-        if self.providers.openrouter:
+        if self.providers.deepseek:
+            # DeepSeek uses OpenAI-compatible API
+            return (
+                "openai",  # Use openai client code
+                self.providers.deepseek.api_key,
+                self.providers.deepseek.default_model,
+                "https://api.deepseek.com",
+            )
+        elif self.providers.openrouter:
             return (
                 "openrouter",
                 self.providers.openrouter.api_key,

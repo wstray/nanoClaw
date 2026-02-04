@@ -166,6 +166,7 @@ async def setup_wizard() -> None:
         ("openrouter", "OpenRouter (recommended - one key, all models)"),
         ("anthropic", "Anthropic API"),
         ("openai", "OpenAI API"),
+        ("deepseek", "DeepSeek API"),
         ("local", "Local model (Ollama, LM Studio, etc.)"),
     ]
     choice = select(providers, title="Step 1/4: LLM Provider", default=0)
@@ -222,7 +223,23 @@ async def setup_wizard() -> None:
             "openai": {"apiKey": api_key, "defaultModel": models[model_idx][0]}
         }
 
-    elif choice == 3:  # Local model
+    elif choice == 3:  # DeepSeek
+        click.echo()
+        api_key = click.prompt("  DeepSeek API key (platform.deepseek.com)")
+        click.echo()
+        models = [
+            ("deepseek-chat", "deepseek-chat (V3)"),
+            ("deepseek-reasoner", "deepseek-reasoner (R1)"),
+        ]
+        model_idx = select(models, title="  Choose model:", default=0)
+        config["providers"] = {
+            "deepseek": {
+                "apiKey": api_key,
+                "defaultModel": models[model_idx][0],
+            }
+        }
+
+    elif choice == 4:  # Local model
         click.echo()
         local_providers = [
             ("ollama", "Ollama (localhost:11434)"),
@@ -624,7 +641,10 @@ def config() -> None:
 def _get_current_provider_info(data: dict) -> tuple[str, str]:
     """Get current provider and model from config."""
     providers = data.get("providers", {})
-    if "openrouter" in providers:
+    if "deepseek" in providers:
+        model = providers["deepseek"].get("defaultModel", "")
+        return "DeepSeek", model
+    elif "openrouter" in providers:
         model = data.get("agents", {}).get("defaults", {}).get("model", "")
         return "OpenRouter", model
     elif "anthropic" in providers:
@@ -664,16 +684,17 @@ def _edit_provider(data: dict, save: callable) -> None:
             ("openrouter", "OpenRouter"),
             ("anthropic", "Anthropic API"),
             ("openai", "OpenAI API"),
+            ("deepseek", "DeepSeek API"),
             ("local", "Local model"),
             ("model", "Change model only"),
             ("back", "Back"),
         ]
         choice = select(options, title="  Select provider:", default=0)
 
-        if choice == 5:  # Back
+        if choice == 6:  # Back
             return
 
-        if choice == 4:  # Change model only
+        if choice == 5:  # Change model only
             _change_model_only(data, save)
             continue
 
@@ -750,7 +771,29 @@ def _edit_provider(data: dict, save: callable) -> None:
                 "defaultModel": models[model_idx][0],
             }
 
-        elif choice == 3:  # Local
+        elif choice == 3:  # DeepSeek
+            click.echo()
+            click.echo("  (leave empty to cancel)")
+            api_key = click.prompt("  DeepSeek API key (platform.deepseek.com)", default="", show_default=False)
+            if not api_key:
+                click.echo("  Cancelled.")
+                continue
+            models = [
+                ("deepseek-chat", "deepseek-chat (V3)"),
+                ("deepseek-reasoner", "deepseek-reasoner (R1)"),
+                ("back", "Back"),
+            ]
+            click.echo()
+            model_idx = select(models, title="  Model:", default=0)
+            if models[model_idx][0] == "back":
+                click.echo("  Cancelled.")
+                continue
+            data["providers"]["deepseek"] = {
+                "apiKey": api_key,
+                "defaultModel": models[model_idx][0],
+            }
+
+        elif choice == 4:  # Local
             click.echo()
             click.echo("  (leave both empty to cancel)")
             base_url = click.prompt("  Base URL", default="http://localhost:11434/v1")
@@ -767,13 +810,26 @@ def _edit_provider(data: dict, save: callable) -> None:
 
         save()
         click.echo("  Saved.")
+        return  # Exit to main menu after saving
 
 
 def _change_model_only(data: dict, save: callable) -> None:
     """Change model without changing provider."""
     providers = data.get("providers", {})
 
-    if "openrouter" in providers:
+    if "deepseek" in providers:
+        models = [
+            ("deepseek-chat", "deepseek-chat (V3)"),
+            ("deepseek-reasoner", "deepseek-reasoner (R1)"),
+            ("back", "Back"),
+        ]
+        click.echo()
+        model_idx = select(models, title="  Model:", default=0)
+        if models[model_idx][0] == "back":
+            return
+        data["providers"]["deepseek"]["defaultModel"] = models[model_idx][0]
+
+    elif "openrouter" in providers:
         models = [
             ("anthropic/claude-sonnet-4-5", "claude-sonnet-4.5"),
             ("anthropic/claude-opus-4-5", "claude-opus-4.5"),
