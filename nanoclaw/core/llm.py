@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -181,18 +182,44 @@ class LLMClient:
         else:
             endpoint = f"{self.base_url}/chat/completions"
 
-        try:
-            async with session.post(
-                endpoint, json=payload, headers=headers
-            ) as resp:
-                if resp.status != 200:
-                    error = await resp.text()
-                    raise LLMError(f"LLM API error {resp.status}: {error}")
-                data = await resp.json()
-        except aiohttp.ClientError as e:
-            raise LLMError(f"Network error: {e}")
+        # Retry with exponential backoff for transient errors
+        max_retries = 3
+        last_error = None
 
-        return self._parse_response(data)
+        for attempt in range(max_retries):
+            try:
+                async with session.post(
+                    endpoint, json=payload, headers=headers
+                ) as resp:
+                    if resp.status == 429 or resp.status == 529:
+                        # Rate limit or overloaded - retry with backoff
+                        if attempt < max_retries - 1:
+                            wait_time = 2 ** attempt  # 1s, 2s, 4s
+                            logger.warning(
+                                f"LLM rate limited (HTTP {resp.status}), "
+                                f"retry {attempt + 1}/{max_retries} in {wait_time}s"
+                            )
+                            await asyncio.sleep(wait_time)
+                            continue
+                        error = await resp.text()
+                        raise LLMError(f"LLM rate limited after {max_retries} retries: {error}")
+
+                    if resp.status != 200:
+                        error = await resp.text()
+                        raise LLMError(f"LLM API error {resp.status}: {error}")
+
+                    data = await resp.json()
+                    return self._parse_response(data)
+
+            except aiohttp.ClientError as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    logger.warning(f"LLM network error, retry {attempt + 1}: {e}")
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                raise LLMError(f"Network error after {max_retries} retries: {e}")
+
+        raise LLMError(f"LLM call failed: {last_error}")
 
     def _build_headers(self) -> dict[str, str]:
         """Build request headers based on provider."""
