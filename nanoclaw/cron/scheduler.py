@@ -94,10 +94,22 @@ class Scheduler:
     async def _execute_job(self, job: dict) -> None:
         """Run a cron job: send message to agent, forward response to user."""
         try:
+            # Sanitize cron message through PromptGuard before sending to agent
+            from nanoclaw.security.prompt_guard import get_prompt_guard
+
+            guard = get_prompt_guard()
+            message = job["message"]
+            detected, matched = guard.check_injection(message)
+            if detected:
+                logger.warning(
+                    f"Cron job '{job['name']}' message contains injection pattern: {matched}"
+                )
+                return  # Drop the job silently
+
             response = await self.gateway.handle_incoming(
                 channel_id="cron",
                 user_id="system",
-                message=job["message"],
+                message=message,
             )
             await self.gateway.send_proactive(
                 f"**{job['name']}**\n\n{response}",
