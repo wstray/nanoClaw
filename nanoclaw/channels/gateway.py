@@ -51,6 +51,15 @@ class Gateway:
         root = logging.getLogger("nanoclaw")
         logger.debug(f"Logger state: level={root.level}, handlers={len(root.handlers)}")
 
+        # Log provider and model
+        provider, _, _, base_url = self.config.get_active_provider()
+        model = self.config.get_default_model()
+        if base_url:
+            logger.info(f"Provider: {provider} ({base_url})")
+        else:
+            logger.info(f"Provider: {provider}")
+        logger.info(f"Model: {model}")
+
         # Start Telegram if enabled
         if self.config.channels.telegram.enabled:
             from nanoclaw.channels.telegram import TelegramChannel
