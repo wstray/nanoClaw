@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from nanoclaw.security.sandbox import SecurityError, get_file_guard
 from nanoclaw.tools.registry import tool
 
@@ -37,10 +39,22 @@ async def file_read(path: str) -> str:
     if not guard.is_safe_to_read(safe_path):
         return f"ACCESS DENIED: cannot read sensitive file: {path}"
 
+    # Use O_NOFOLLOW to atomically reject symlinks at open() time (no TOCTOU)
     try:
-        content = safe_path.read_text(encoding="utf-8", errors="replace")
+        fd = os.open(str(safe_path), os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as e:
+        if e.errno == 40:  # ELOOP — is a symlink
+            return f"ACCESS DENIED: symlink points outside workspace: {path}"
+        return f"Error reading file: {e}"
+
+    try:
+        # Read 16KB to guarantee 4000+ chars even with 4-byte UTF-8
+        raw = os.read(fd, 16384)
+        content = raw.decode("utf-8", errors="replace")
     except Exception as e:
         return f"Error reading file: {e}"
+    finally:
+        os.close(fd)
 
     if len(content) > 4000:
         content = content[:4000] + "\n...[truncated]"
@@ -71,10 +85,25 @@ async def file_write(path: str, content: str) -> str:
     except SecurityError as e:
         return str(e)
 
+    # Block writes to sensitive paths
+    if not guard.is_safe_to_write(safe_path):
+        return f"ACCESS DENIED: cannot write to sensitive path: {path}"
+
     try:
         # Create parent directories if needed
         safe_path.parent.mkdir(parents=True, exist_ok=True)
-        safe_path.write_text(content, encoding="utf-8")
+
+        # Use O_NOFOLLOW to atomically reject symlinks at open() time (no TOCTOU)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
+        fd = os.open(str(safe_path), flags, 0o644)
+        try:
+            os.write(fd, content.encode("utf-8"))
+        finally:
+            os.close(fd)
+    except OSError as e:
+        if e.errno == 40:  # ELOOP — is a symlink
+            return f"ACCESS DENIED: symlink at write target: {path}"
+        return f"Error writing file: {e}"
     except Exception as e:
         return f"Error writing file: {e}"
 
@@ -108,9 +137,15 @@ async def file_list(path: str = ".") -> str:
     if not safe_path.is_dir():
         return f"Not a directory: {path}"
 
+    # Dotfile prefixes to hide from listing
+    HIDDEN_PREFIXES = (".env", ".git", ".ssh", ".aws", ".kube", ".docker", ".gnupg")
+
     entries = []
     try:
         for item in sorted(safe_path.iterdir()):
+            name_lower = item.name.lower()
+            if any(name_lower.startswith(prefix) for prefix in HIDDEN_PREFIXES):
+                continue
             if item.is_dir():
                 entries.append(f"[DIR]  {item.name}/")
             else:
