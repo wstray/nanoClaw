@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import socket
 import time
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -12,6 +15,36 @@ from nanoclaw.core.logger import get_logger
 from nanoclaw.tools.registry import tool
 
 logger = get_logger(__name__)
+
+
+def _is_private_ip(hostname: str) -> bool:
+    """Check if a literal IP is private/loopback/link-local (no DNS)."""
+    try:
+        addr = ipaddress.ip_address(hostname)
+        return addr.is_private or addr.is_loopback or addr.is_link_local
+    except ValueError:
+        return False
+
+
+async def _is_private_host(hostname: str) -> bool:
+    """Check if a hostname resolves to a private/loopback/link-local IP."""
+    # Fast path: literal IP — no DNS needed
+    if _is_private_ip(hostname):
+        return True
+
+    # DNS resolution in a thread to avoid blocking the event loop
+    def _resolve() -> bool:
+        try:
+            for info in socket.getaddrinfo(hostname, None):
+                addr = ipaddress.ip_address(info[4][0])
+                if addr.is_private or addr.is_loopback or addr.is_link_local:
+                    return True
+        except (socket.gaierror, ValueError):
+            pass
+        return False
+
+    return await asyncio.to_thread(_resolve)
+
 
 # Simple rate limiter for Brave API (1 request per second)
 _last_search_time: float = 0.0
@@ -116,28 +149,60 @@ async def web_fetch(url: str) -> str:
     Works for 90% of sites (articles, blogs, docs).
     Does NOT work for SPAs requiring JavaScript.
     """
+    # SSRF protection: block private/loopback/link-local addresses
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ""
+        if not hostname:
+            return "Invalid URL: no hostname"
+        if await _is_private_host(hostname):
+            return "BLOCKED: cannot fetch private/internal addresses"
+    except Exception:
+        return "Invalid URL"
+
     try:
         session = await ConnectionPool.get_session()
-        async with session.get(
-            url,
-            timeout=aiohttp.ClientTimeout(total=15),
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (compatible; nanoClaw/1.0; "
-                    "+https://github.com/nanoclaw)"
-                ),
-                "Accept-Encoding": "gzip, deflate",
-            },
-            allow_redirects=True,
-        ) as resp:
-            if resp.status != 200:
-                return f"Failed to fetch: HTTP {resp.status}"
+        max_redirects = 5
+        current_url = url
+        for _ in range(max_redirects):
+            async with session.get(
+                current_url,
+                timeout=aiohttp.ClientTimeout(total=15),
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (compatible; nanoClaw/1.0; "
+                        "+https://github.com/nanoclaw)"
+                    ),
+                    "Accept-Encoding": "gzip, deflate",
+                },
+                allow_redirects=False,
+            ) as resp:
+                if resp.status in (301, 302, 303, 307, 308):
+                    location = resp.headers.get("Location", "")
+                    if not location:
+                        return "Redirect with no Location header"
+                    # Validate redirect target against SSRF
+                    try:
+                        redir_parsed = urlparse(location)
+                        redir_host = redir_parsed.hostname or ""
+                        if redir_host and await _is_private_host(redir_host):
+                            return "BLOCKED: redirect points to private/internal address"
+                    except Exception:
+                        return "BLOCKED: invalid redirect URL"
+                    current_url = location
+                    continue
 
-            content_type = resp.headers.get("Content-Type", "")
-            if "text/html" not in content_type and "text/plain" not in content_type:
-                return f"Not a text page. Content-Type: {content_type}"
+                if resp.status != 200:
+                    return f"Failed to fetch: HTTP {resp.status}"
 
-            html = await resp.text()
+                content_type = resp.headers.get("Content-Type", "")
+                if "text/html" not in content_type and "text/plain" not in content_type:
+                    return f"Not a text page. Content-Type: {content_type}"
+
+                html = await resp.text()
+                break
+        else:
+            return "Too many redirects"
     except aiohttp.ClientError as e:
         return f"Network error fetching {url}: {e}"
     except Exception as e:
