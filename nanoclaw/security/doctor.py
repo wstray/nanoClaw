@@ -49,7 +49,7 @@ class SecurityDoctor:
             self.check_shell_sandbox(),
             self.check_dashboard_binding(),
             self.check_workspace_exposure(),
-            self.check_confirmation_mode(),
+            self.check_symlinks(),
         ]
         return checks
 
@@ -110,8 +110,7 @@ class SecurityDoctor:
         )
 
     def check_key_exposure(self) -> CheckResult:
-        """Check if API keys are exposed in logs or audit."""
-        # Check if any log files contain API key patterns
+        """Check if API keys are exposed in logs, database, or text files."""
         data_dir = self.config_dir / "data"
         if not data_dir.exists():
             return CheckResult(
@@ -120,27 +119,30 @@ class SecurityDoctor:
                 message="No data files to check",
             )
 
-        # Simple check - look for common API key prefixes in logs
+        # Simple check - look for common API key prefixes
         suspicious_patterns = ["sk-", "sk-ant-", "Bearer ", "x-api-key"]
 
-        for log_file in data_dir.glob("*.log"):
-            try:
-                content = log_file.read_text()
-                for pattern in suspicious_patterns:
-                    if pattern in content:
-                        return CheckResult(
-                            name="Key exposure",
-                            passed=False,
-                            message=f"Possible API key in {log_file.name}. Review and redact.",
-                            severity="critical",
-                        )
-            except Exception:
-                pass
+        # Scan *.log, *.db (text content), and *.txt files
+        scan_globs = ["*.log", "*.db", "*.txt"]
+        for glob_pattern in scan_globs:
+            for data_file in data_dir.glob(glob_pattern):
+                try:
+                    content = data_file.read_text(errors="replace")
+                    for pattern in suspicious_patterns:
+                        if pattern in content:
+                            return CheckResult(
+                                name="Key exposure",
+                                passed=False,
+                                message=f"Possible API key in {data_file.name}. Review and redact.",
+                                severity="critical",
+                            )
+                except Exception:
+                    pass
 
         return CheckResult(
             name="Key exposure",
             passed=True,
-            message="No API keys found in logs",
+            message="No API keys found in data files",
         )
 
     def check_telegram_whitelist(self) -> CheckResult:
@@ -178,7 +180,7 @@ class SecurityDoctor:
             )
 
     def check_shell_sandbox(self) -> CheckResult:
-        """Check if shell sandbox is enabled."""
+        """Check if shell sandbox is enabled and confirmation mode is on."""
         try:
             from nanoclaw.core.config import Config
 
@@ -194,7 +196,8 @@ class SecurityDoctor:
                 return CheckResult(
                     name="Shell sandbox",
                     passed=False,
-                    message="Shell enabled but confirmDangerous is off",
+                    message="Shell enabled but confirmDangerous is off. "
+                    "Enable confirmDangerous in config.",
                     severity="warning",
                 )
             return CheckResult(
@@ -263,31 +266,46 @@ class SecurityDoctor:
             message="Workspace is not world-readable",
         )
 
-    def check_confirmation_mode(self) -> CheckResult:
-        """Check if confirmation mode is enabled for dangerous commands."""
-        try:
-            from nanoclaw.core.config import Config
+    def check_symlinks(self) -> CheckResult:
+        """Scan workspace for symlinks pointing outside the workspace."""
+        workspace_path = self.config_dir / "workspace"
 
-            config = Config.load(self.config_dir / "config.json")
-
-            if config.tools.shell.confirm_dangerous:
-                return CheckResult(
-                    name="Confirmation mode",
-                    passed=True,
-                    message="Dangerous commands require user confirmation",
-                )
+        if not workspace_path.exists():
             return CheckResult(
-                name="Confirmation mode",
+                name="Symlink check",
+                passed=True,
+                message="Workspace not created yet",
+            )
+
+        workspace_resolved = workspace_path.resolve()
+        bad_links: list[str] = []
+
+        try:
+            for item in workspace_resolved.rglob("*"):
+                if item.is_symlink():
+                    try:
+                        target = item.resolve()
+                        target.relative_to(workspace_resolved)
+                    except ValueError:
+                        bad_links.append(str(item.relative_to(workspace_resolved)))
+        except Exception:
+            pass
+
+        if bad_links:
+            names = ", ".join(bad_links[:5])
+            suffix = f" (and {len(bad_links) - 5} more)" if len(bad_links) > 5 else ""
+            return CheckResult(
+                name="Symlink check",
                 passed=False,
-                message="Confirmation disabled. Enable confirmDangerous in config.",
+                message=f"Symlinks pointing outside workspace: {names}{suffix}",
                 severity="warning",
             )
-        except Exception:
-            return CheckResult(
-                name="Confirmation mode",
-                passed=True,
-                message="Using default (confirmations enabled)",
-            )
+
+        return CheckResult(
+            name="Symlink check",
+            passed=True,
+            message="No symlinks pointing outside workspace",
+        )
 
     def format_report(self, checks: list[CheckResult]) -> str:
         """
