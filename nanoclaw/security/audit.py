@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -12,8 +15,29 @@ from nanoclaw.core.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _get_hmac_key() -> bytes:
+    """
+    Get or create a persistent HMAC key for audit log integrity.
+
+    The key is stored in the config directory alongside the database.
+    """
+    from nanoclaw.core.config import get_data_path
+
+    key_path = get_data_path() / ".audit_hmac_key"
+    if key_path.exists():
+        return key_path.read_bytes()
+    key = uuid.uuid4().bytes + uuid.uuid4().bytes  # 32 bytes
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    key_path.write_bytes(key)
+    try:
+        key_path.chmod(0o600)
+    except OSError:
+        pass
+    return key
+
+
 class AuditLog:
-    """Immutable log of every agent action."""
+    """Immutable log of every agent action with HMAC integrity."""
 
     def __init__(self, db_path: str | Path):
         """
@@ -24,6 +48,7 @@ class AuditLog:
         """
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._hmac_key = _get_hmac_key()
         self._init_db()
 
     def _init_db(self) -> None:
@@ -40,14 +65,41 @@ class AuditLog:
                 output_summary TEXT,
                 status TEXT NOT NULL DEFAULT 'success',
                 tokens_used INTEGER DEFAULT 0,
-                execution_ms INTEGER DEFAULT 0
+                execution_ms INTEGER DEFAULT 0,
+                integrity_hash TEXT
             )
         """)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)"
         )
+        # Add integrity_hash column to existing databases
+        try:
+            conn.execute("ALTER TABLE audit_log ADD COLUMN integrity_hash TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         conn.commit()
         conn.close()
+
+    def _compute_hmac(
+        self,
+        timestamp: str,
+        session_id: str,
+        action_type: str,
+        tool_name: str,
+        input_summary: str,
+        output_summary: str,
+        status: str,
+        tokens: int,
+        ms: int,
+    ) -> str:
+        """Compute HMAC-SHA256 over an audit row's content."""
+        message = (
+            f"{timestamp}|{session_id}|{action_type}|{tool_name}|"
+            f"{input_summary}|{output_summary}|{status}|{tokens}|{ms}"
+        )
+        return hmac.new(
+            self._hmac_key, message.encode(), hashlib.sha256
+        ).hexdigest()
 
     async def log(
         self,
@@ -79,14 +131,31 @@ class AuditLog:
 
         def _insert() -> None:
             conn = sqlite3.connect(self.db_path)
+            # Get the timestamp that will be used
+            cursor = conn.execute("SELECT datetime('now')")
+            timestamp = cursor.fetchone()[0]
+
+            integrity = self._compute_hmac(
+                timestamp,
+                session_id or "",
+                action_type,
+                tool_name or "",
+                input_summary,
+                output_summary,
+                status,
+                tokens,
+                ms,
+            )
+
             conn.execute(
                 """
                 INSERT INTO audit_log
-                (session_id, action_type, tool_name, input_summary, output_summary,
-                 status, tokens_used, execution_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (timestamp, session_id, action_type, tool_name, input_summary,
+                 output_summary, status, tokens_used, execution_ms, integrity_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    timestamp,
                     session_id,
                     action_type,
                     tool_name,
@@ -95,6 +164,7 @@ class AuditLog:
                     status,
                     tokens,
                     ms,
+                    integrity,
                 ),
             )
             conn.commit()
@@ -165,6 +235,47 @@ class AuditLog:
             }
 
         return await asyncio.to_thread(_query)
+
+    async def verify_integrity(self) -> tuple[int, int]:
+        """
+        Verify HMAC integrity of all audit log entries.
+
+        Returns:
+            (valid_count, tampered_count) tuple
+        """
+
+        def _verify() -> tuple[int, int]:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("SELECT * FROM audit_log ORDER BY id")
+            valid = 0
+            tampered = 0
+            for row in cursor:
+                row_dict = dict(row)
+                stored_hash = row_dict.get("integrity_hash")
+                if not stored_hash:
+                    # Legacy entry without hash — skip
+                    continue
+                expected = self._compute_hmac(
+                    row_dict["timestamp"],
+                    row_dict.get("session_id") or "",
+                    row_dict["action_type"],
+                    row_dict.get("tool_name") or "",
+                    row_dict.get("input_summary") or "",
+                    row_dict.get("output_summary") or "",
+                    row_dict["status"],
+                    row_dict.get("tokens_used") or 0,
+                    row_dict.get("execution_ms") or 0,
+                )
+                if hmac.compare_digest(stored_hash, expected):
+                    valid += 1
+                else:
+                    tampered += 1
+                    logger.warning(f"Tampered audit entry id={row_dict['id']}")
+            conn.close()
+            return valid, tampered
+
+        return await asyncio.to_thread(_verify)
 
     async def export_json(self, since: Optional[str] = None) -> str:
         """
