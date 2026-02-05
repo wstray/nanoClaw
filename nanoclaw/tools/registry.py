@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import os
+import stat
 import sys
 from dataclasses import dataclass, field
 from functools import wraps
@@ -211,6 +213,9 @@ class ToolRegistry:
         """
         Auto-discover and load .py files from skills directory.
 
+        Only loads files owned by the current user and not writable by
+        group/others (prevents tampering by other users on shared systems).
+
         Args:
             skills_dir: Path to skills directory
         """
@@ -219,8 +224,32 @@ class ToolRegistry:
             logger.debug(f"Skills directory not found: {skills_dir}")
             return
 
+        # Check directory ownership and permissions
+        try:
+            dir_stat = skills_path.stat()
+            if dir_stat.st_uid != os.getuid():
+                logger.warning(f"Skills directory not owned by current user: {skills_dir}")
+                return
+            if dir_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                logger.warning(f"Skills directory writable by others: {skills_dir}")
+                return
+        except OSError:
+            return
+
         for py_file in skills_path.glob("*.py"):
             if py_file.name.startswith("_"):
+                continue
+
+            # Validate file ownership and permissions
+            try:
+                file_stat = py_file.stat()
+                if file_stat.st_uid != os.getuid():
+                    logger.warning(f"Skipping skill {py_file.name}: not owned by current user")
+                    continue
+                if file_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                    logger.warning(f"Skipping skill {py_file.name}: writable by group/others")
+                    continue
+            except OSError:
                 continue
 
             try:
