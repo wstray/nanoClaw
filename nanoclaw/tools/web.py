@@ -125,7 +125,8 @@ async def web_fetch(url: str) -> str:
                 "User-Agent": (
                     "Mozilla/5.0 (compatible; nanoClaw/1.0; "
                     "+https://github.com/nanoclaw)"
-                )
+                ),
+                "Accept-Encoding": "gzip, deflate",
             },
             allow_redirects=True,
         ) as resp:
