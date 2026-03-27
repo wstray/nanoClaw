@@ -78,6 +78,11 @@ nanoclaw cron add --name "Morning news" --message "Summarize tech news" --every 
 nanoclaw cron remove 1
 ```
 
+```
+# Package
+uv run pyinstaller nanoclaw.spec --clean
+```
+
 ## Architecture
 
 ```

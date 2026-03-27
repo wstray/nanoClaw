@@ -63,10 +63,24 @@ class TelegramConfig(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class EteamsConfig(BaseModel):
+    """Eteams IM configuration."""
+
+    enabled: bool = False
+    base_url: str = Field(default="", alias="baseUrl")
+    phone: str = ""
+    encrypted_password: str = Field(default="", alias="encryptedPassword")
+    device_type: int = Field(default=9, alias="deviceType")
+    allow_from: list[str] = Field(default_factory=list, alias="allowFrom")
+
+    model_config = {"populate_by_name": True}
+
+
 class ChannelsConfig(BaseModel):
     """Communication channels configuration."""
 
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
+    eteams: EteamsConfig = Field(default_factory=EteamsConfig)
 
 
 class WebSearchConfig(BaseModel):

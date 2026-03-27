@@ -17,6 +17,13 @@ from nanoclaw.core.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _get_current_uid() -> int:
+    """Get current user ID, with Windows compatibility."""
+    if sys.platform == "win32":
+        return 0  # Windows doesn't have UID, return 0 to skip check
+    return _get_current_uid()
+
+
 @dataclass
 class ToolInfo:
     """Information about a registered tool."""
@@ -224,33 +231,35 @@ class ToolRegistry:
             logger.debug(f"Skills directory not found: {skills_dir}")
             return
 
-        # Check directory ownership and permissions
-        try:
-            dir_stat = skills_path.stat()
-            if dir_stat.st_uid != os.getuid():
-                logger.warning(f"Skills directory not owned by current user: {skills_dir}")
+        # Check directory ownership and permissions (skip on Windows)
+        if sys.platform != "win32":
+            try:
+                dir_stat = skills_path.stat()
+                if dir_stat.st_uid != _get_current_uid():
+                    logger.warning(f"Skills directory not owned by current user: {skills_dir}")
+                    return
+                if dir_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                    logger.warning(f"Skills directory writable by others: {skills_dir}")
+                    return
+            except OSError:
                 return
-            if dir_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-                logger.warning(f"Skills directory writable by others: {skills_dir}")
-                return
-        except OSError:
-            return
 
         for py_file in skills_path.glob("*.py"):
             if py_file.name.startswith("_"):
                 continue
 
-            # Validate file ownership and permissions
-            try:
-                file_stat = py_file.stat()
-                if file_stat.st_uid != os.getuid():
-                    logger.warning(f"Skipping skill {py_file.name}: not owned by current user")
+            # Validate file ownership and permissions (skip on Windows)
+            if sys.platform != "win32":
+                try:
+                    file_stat = py_file.stat()
+                    if file_stat.st_uid != _get_current_uid():
+                        logger.warning(f"Skipping skill {py_file.name}: not owned by current user")
+                        continue
+                    if file_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                        logger.warning(f"Skipping skill {py_file.name}: writable by group/others")
+                        continue
+                except OSError:
                     continue
-                if file_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-                    logger.warning(f"Skipping skill {py_file.name}: writable by group/others")
-                    continue
-            except OSError:
-                continue
 
             try:
                 spec = importlib.util.spec_from_file_location(py_file.stem, py_file)

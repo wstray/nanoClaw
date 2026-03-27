@@ -5,11 +5,19 @@ from __future__ import annotations
 import importlib.util
 import os
 import stat
+import sys
 from pathlib import Path
 
 from nanoclaw.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _get_current_uid() -> int:
+    """Get current user ID, with Windows compatibility."""
+    if sys.platform == "win32":
+        return 0  # Windows doesn't have UID, return 0 to skip check
+    return _get_current_uid()
 
 
 def _is_safe_skill_file(path: Path) -> bool:
@@ -19,15 +27,15 @@ def _is_safe_skill_file(path: Path) -> bool:
     """
     try:
         st = path.stat()
-        # Must be owned by the current user
-        if st.st_uid != os.getuid():
+        # Must be owned by the current user (skip on Windows)
+        if sys.platform != "win32" and st.st_uid != _get_current_uid():
             logger.warning(
                 f"Skipping skill {path.name}: not owned by current user "
-                f"(owner uid={st.st_uid}, current uid={os.getuid()})"
+                f"(owner uid={st.st_uid}, current uid={_get_current_uid()})"
             )
             return False
-        # Must not be writable by group or others
-        if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        # Must not be writable by group or others (skip on Windows)
+        if sys.platform != "win32" and st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
             logger.warning(
                 f"Skipping skill {path.name}: writable by group/others "
                 f"(mode={oct(st.st_mode)})"
@@ -57,17 +65,18 @@ def load_skills_from_directory(skills_dir: str | Path) -> int:
     if not skills_path.exists():
         return 0
 
-    # Check directory permissions
-    try:
-        dir_stat = skills_path.stat()
-        if dir_stat.st_uid != os.getuid():
-            logger.warning(f"Skills directory not owned by current user: {skills_dir}")
+    # Check directory permissions (skip on Windows)
+    if sys.platform != "win32":
+        try:
+            dir_stat = skills_path.stat()
+            if dir_stat.st_uid != _get_current_uid():
+                logger.warning(f"Skills directory not owned by current user: {skills_dir}")
+                return 0
+            if dir_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                logger.warning(f"Skills directory writable by others: {skills_dir}")
+                return 0
+        except OSError:
             return 0
-        if dir_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-            logger.warning(f"Skills directory writable by others: {skills_dir}")
-            return 0
-    except OSError:
-        return 0
 
     loaded = 0
     for py_file in skills_path.glob("*.py"):

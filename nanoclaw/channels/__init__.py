@@ -1,1 +1,1 @@
-"""Channels module - Telegram, console, gateway."""
+"""Channels module - Telegram, console, eteams, gateway."""

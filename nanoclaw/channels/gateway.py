@@ -69,6 +69,15 @@ class Gateway:
             self.channels["telegram"] = telegram
             logger.info("Telegram channel started")
 
+        # Start Eteams if enabled
+        if self.config.channels.eteams.enabled:
+            from nanoclaw.channels.eteams import EteamsChannel
+
+            eteams = EteamsChannel(self.config.channels.eteams, self)
+            await eteams.start()
+            self.channels["eteams"] = eteams
+            logger.info("Eteams channel started")
+
         # Start cron scheduler
         from nanoclaw.cron.scheduler import Scheduler
 
