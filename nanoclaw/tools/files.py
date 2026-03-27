@@ -3,9 +3,38 @@
 from __future__ import annotations
 
 import os
+import sys
 
 from nanoclaw.security.sandbox import SecurityError, get_file_guard
 from nanoclaw.tools.registry import tool
+
+# Platform detection for Windows compatibility
+_IS_WINDOWS = sys.platform.startswith("win")
+
+
+def _open_file_for_read(path: os.PathLike | str) -> int:
+    """Open file for reading with platform-appropriate security.
+
+    On Unix: Use O_NOFOLLOW to atomically reject symlinks.
+    On Windows: Symlink checking is done by FileGuard before opening.
+    """
+    if _IS_WINDOWS:
+        return os.open(str(path), os.O_RDONLY)
+    else:
+        return os.open(str(path), os.O_RDONLY | os.O_NOFOLLOW)
+
+
+def _open_file_for_write(path: os.PathLike | str) -> int:
+    """Open file for writing with platform-appropriate security.
+
+    On Unix: Use O_NOFOLLOW to atomically reject symlinks.
+    On Windows: Symlink checking is done by FileGuard before opening.
+    Note: mode parameter is ignored on Windows (uses ACLs instead).
+    """
+    if _IS_WINDOWS:
+        return os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    else:
+        return os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
 
 
 @tool(
@@ -39,11 +68,11 @@ async def file_read(path: str) -> str:
     if not guard.is_safe_to_read(safe_path):
         return f"ACCESS DENIED: cannot read sensitive file: {path}"
 
-    # Use O_NOFOLLOW to atomically reject symlinks at open() time (no TOCTOU)
+    # Use platform-appropriate file opening (symlink check already done by is_safe_to_read)
     try:
-        fd = os.open(str(safe_path), os.O_RDONLY | os.O_NOFOLLOW)
+        fd = _open_file_for_read(safe_path)
     except OSError as e:
-        if e.errno == 40:  # ELOOP — is a symlink
+        if not _IS_WINDOWS and e.errno == 40:  # ELOOP — is a symlink (Unix only)
             return f"ACCESS DENIED: symlink points outside workspace: {path}"
         return f"Error reading file: {e}"
 
@@ -93,15 +122,14 @@ async def file_write(path: str, content: str) -> str:
         # Create parent directories if needed
         safe_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Use O_NOFOLLOW to atomically reject symlinks at open() time (no TOCTOU)
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
-        fd = os.open(str(safe_path), flags, 0o644)
+        # Use platform-appropriate file opening (symlink check already done by is_safe_to_write)
+        fd = _open_file_for_write(safe_path)
         try:
             os.write(fd, content.encode("utf-8"))
         finally:
             os.close(fd)
     except OSError as e:
-        if e.errno == 40:  # ELOOP — is a symlink
+        if not _IS_WINDOWS and e.errno == 40:  # ELOOP — is a symlink (Unix only)
             return f"ACCESS DENIED: symlink at write target: {path}"
         return f"Error writing file: {e}"
     except Exception as e:
