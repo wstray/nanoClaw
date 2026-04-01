@@ -6,7 +6,10 @@
       "Bash(python:*)",
       "Bash(uv add:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "WebSearch",
+      "Bash(uv pip:*)",
+      "Bash(taskkill /F /IM nanoclaw.exe)"
     ]
   }
 }

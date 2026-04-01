@@ -40,6 +40,7 @@ class DeepSeekConfig(BaseModel):
 
     api_key: str = Field(alias="apiKey")
     default_model: str = Field(default="deepseek-chat", alias="defaultModel")
+    base_url: Optional[str] = Field(default="https://api.deepseek.com", alias="baseUrl")
 
 
 class ProvidersConfig(BaseModel):
@@ -134,6 +135,17 @@ class AgentsConfig(BaseModel):
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
 
 
+class DeepAgentsConfig(BaseModel):
+    """LangChain DeepAgents configuration."""
+
+    enabled: bool = Field(default=True)
+    enable_planning: bool = Field(default=True, alias="enablePlanning")
+    enable_subagents: bool = Field(default=True, alias="enableSubagents")
+    tavily_api_key: str = Field(default="", alias="tavilyApiKey")
+
+    model_config = {"populate_by_name": True}
+
+
 class AgentConfig(BaseModel):
     """Agent runtime configuration."""
 
@@ -141,6 +153,7 @@ class AgentConfig(BaseModel):
     max_tokens_per_session: int = Field(default=50000, alias="maxTokensPerSession")
     session_timeout: int = Field(default=300, alias="sessionTimeout")
     system_prompt: str = Field(default="", alias="systemPrompt")
+    deepagents: DeepAgentsConfig = Field(default_factory=DeepAgentsConfig)
 
     model_config = {"populate_by_name": True}
 
@@ -192,7 +205,7 @@ class Config(BaseModel):
                 "openai",  # Use openai client code
                 self.providers.deepseek.api_key,
                 self.providers.deepseek.default_model,
-                "https://api.deepseek.com",
+                self.providers.deepseek.base_url,  # Use configured base_url
             )
         elif self.providers.openrouter:
             return (
