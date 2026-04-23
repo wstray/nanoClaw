@@ -31,7 +31,21 @@
     "shell": {
       "enabled": true,
       "timeout": 30,
-      "confirmDangerous": true
+      "confirmDangerous": true,
+      "inheritEnv": false,
+      "envVars": {
+        "PATH": "D:\\tools;C:\\Users\\zhao\\miniconda3\\envs\\learn-bot",
+        "RC_WORKITEM_ADAPTER": "FileAdapter",
+        "ROBOCORP_HOME": "C:\\Users\\zhao\\.nanoclaw\\workspace\\robocorp"
+      }
+    },
+    "robocorp": {
+      "rccPath": "",
+      "defaultTimeout": 300,
+      "robotsFile": "",
+      "robots": {
+        "example-bot": "C:/path/to/your/robot"
+      }
     }
   },
   "memory": {

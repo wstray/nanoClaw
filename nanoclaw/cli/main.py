@@ -284,7 +284,7 @@ async def setup_wizard() -> None:
 
     # Step 3: Web Search
     click.echo()
-    use_search = confirm_interactive("Step 3/4: Enable web search?", default=True)
+    use_search = confirm_interactive("Step 3/5: Enable web search?", default=True)
     if use_search:
         click.echo()
         search_key = click.prompt(
@@ -295,8 +295,33 @@ async def setup_wizard() -> None:
         if search_key:
             config["tools"] = {"webSearch": {"apiKey": search_key}}
 
-    # Step 4: Save
-    click.echo("\nStep 4/4: Saving configuration...")
+    # Step 4: Langfuse Tracing
+    click.echo()
+    use_langfuse = confirm_interactive("Step 4/5: Enable Langfuse observability/tracing?", default=False)
+    if use_langfuse:
+        click.echo()
+        click.echo("  Get your API keys from: https://cloud.langfuse.com (or your self-hosted instance)")
+        public_key = click.prompt("  Langfuse Public Key (pk-lf-...)", default="", show_default=False)
+        secret_key = click.prompt("  Langfuse Secret Key (sk-lf-...)", default="", show_default=False)
+
+        if public_key and secret_key:
+            host = click.prompt(
+                "  Langfuse Host",
+                default="https://cloud.langfuse.com",
+                show_default=True
+            )
+            config["langfuse"] = {
+                "enabled": True,
+                "publicKey": public_key,
+                "secretKey": secret_key,
+                "host": host,
+            }
+            click.echo("  Langfuse tracing enabled!")
+        else:
+            click.echo("  Skipping Langfuse (keys not provided)")
+
+    # Step 5: Save
+    click.echo("\nStep 5/5: Saving configuration...")
 
     config_dir = Path.home() / ".nanoclaw"
     config_dir.mkdir(exist_ok=True)
@@ -371,6 +396,9 @@ async def one_shot_chat(message: str) -> None:
         response = await agent.run(message, session_id="cli")
         click.echo(f"\n{response}")
     finally:
+        # Flush telemetry data before exit
+        agent = get_agent()
+        await agent.flush()
         await ConnectionPool.close()
 
 
@@ -405,6 +433,8 @@ async def interactive_chat() -> None:
             response = await agent.run(user_input, session_id=session_id)
             click.echo(f"\nAssistant: {response}\n")
     finally:
+        # Flush telemetry data before exit
+        await agent.flush()
         await ConnectionPool.close()
 
 
@@ -464,6 +494,12 @@ async def show_status() -> None:
     # Channels
     click.echo(f"\nTelegram: {'enabled' if config.channels.telegram.enabled else 'disabled'}")
     click.echo(f"Dashboard: {'enabled' if config.dashboard.enabled else 'disabled'}")
+
+    # Observability
+    langfuse_status = 'enabled' if config.langfuse.enabled else 'disabled'
+    if config.langfuse.enabled and config.langfuse.host:
+        langfuse_status += f" ({config.langfuse.host})"
+    click.echo(f"Langfuse: {langfuse_status}")
 
     # Stats
     try:
@@ -613,12 +649,15 @@ def config() -> None:
         click.echo(f"  Telegram: {'enabled' if tg_enabled else 'disabled'}")
         brave_key = data.get("tools", {}).get("webSearch", {}).get("apiKey", "")
         click.echo(f"  Web search: {'configured' if brave_key else 'not configured'}")
+        langfuse_enabled = data.get("langfuse", {}).get("enabled", False)
+        click.echo(f"  Langfuse: {'enabled' if langfuse_enabled else 'disabled'}")
         click.echo()
 
         options = [
             ("provider", "LLM Provider & Model"),
             ("telegram", "Telegram"),
             ("tools", "Tools (web search, etc.)"),
+            ("langfuse", "Langfuse Observability"),
             ("show", "Show full config (JSON)"),
             ("exit", "Exit"),
         ]
@@ -631,9 +670,11 @@ def config() -> None:
         elif choice == 2:
             _edit_tools(data, save)
         elif choice == 3:
+            _edit_langfuse(data, save)
+        elif choice == 4:
             masked = _mask_secrets(data)
             click.echo(json.dumps(masked, indent=2))
-        elif choice == 4:
+        elif choice == 5:
             break
 
     click.echo("Done.")
@@ -983,6 +1024,82 @@ def _edit_tools(data: dict, save: Callable[[], None]) -> None:
             if "webSearch" not in data["tools"]:
                 data["tools"]["webSearch"] = {}
             data["tools"]["webSearch"]["apiKey"] = api_key
+            save()
+            click.echo("  Saved.")
+
+
+def _edit_langfuse(data: dict, save: Callable[[], None]) -> None:
+    """Edit Langfuse observability settings."""
+    while True:
+        click.echo()
+        langfuse = data.get("langfuse", {})
+
+        current_enabled = langfuse.get("enabled", False)
+        current_public = langfuse.get("publicKey", "")
+        current_secret = langfuse.get("secretKey", "")
+        current_host = langfuse.get("host", "https://cloud.langfuse.com")
+
+        masked_public = current_public[:8] + "****" if len(current_public) > 12 else "(not set)"
+        masked_secret = "****" if current_secret else "(not set)"
+
+        click.echo(f"  Enabled: {current_enabled}")
+        click.echo(f"  Public Key: {masked_public}")
+        click.echo(f"  Secret Key: {masked_secret}")
+        click.echo(f"  Host: {current_host}")
+        click.echo()
+
+        options = [
+            ("toggle", f"{'Disable' if current_enabled else 'Enable'} Langfuse"),
+            ("keys", "Update API keys"),
+            ("host", "Update host URL"),
+            ("back", "Back"),
+        ]
+        choice = select(options, title="  Edit:", default=0)
+
+        if choice == 3:  # Back
+            return
+
+        if choice == 0:  # Toggle
+            if "langfuse" not in data:
+                data["langfuse"] = {}
+            data["langfuse"]["enabled"] = not current_enabled
+            save()
+            click.echo(f"  Langfuse {'enabled' if data['langfuse']['enabled'] else 'disabled'}.")
+
+        elif choice == 1:  # Update keys
+            click.echo()
+            click.echo("  Get keys from: https://cloud.langfuse.com (Settings -> API Keys)")
+            click.echo("  (leave empty to cancel)")
+            public_key = click.prompt("  Public Key (pk-lf-...)", default="", show_default=False)
+            if not public_key:
+                click.echo("  Cancelled.")
+                continue
+            secret_key = click.prompt("  Secret Key (sk-lf-...)", default="", show_default=False)
+            if not secret_key:
+                click.echo("  Cancelled.")
+                continue
+            if "langfuse" not in data:
+                data["langfuse"] = {}
+            data["langfuse"]["publicKey"] = public_key
+            data["langfuse"]["secretKey"] = secret_key
+            data["langfuse"]["enabled"] = True
+            save()
+            click.echo("  Saved.")
+
+        elif choice == 2:  # Update host
+            click.echo()
+            click.echo("  Common hosts:")
+            click.echo("    - https://cloud.langfuse.com (EU cloud)")
+            click.echo("    - https://us.cloud.langfuse.com (US cloud)")
+            click.echo("    - http://localhost:3000 (self-hosted)")
+            click.echo("  (leave empty to cancel)")
+            host = click.prompt("  Host URL", default=current_host, show_default=True)
+            if not host:
+                click.echo("  Cancelled.")
+                continue
+            if "langfuse" not in data:
+                data["langfuse"] = {}
+            data["langfuse"]["host"] = host
             save()
             click.echo("  Saved.")
 

@@ -6,6 +6,7 @@ import asyncio
 import signal
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
+from nanoclaw.core.jsonl_logger import get_jsonl_logger
 from nanoclaw.core.llm import ConnectionPool
 from nanoclaw.core.logger import get_logger
 
@@ -151,6 +152,19 @@ class Gateway:
             return response
         except Exception as e:
             logger.error(f"Agent error: {e}")
+
+            # Log gateway-level error to JSONL
+            jsonl_logger = get_jsonl_logger()
+            if jsonl_logger:
+                import traceback
+                await jsonl_logger.log_system(
+                    level="ERROR",
+                    component="gateway",
+                    message=f"Gateway error processing message: {e}",
+                    exception=traceback.format_exc(),
+                    context={"session_id": session_id, "channel_id": channel_id, "user_id": user_id}
+                )
+
             return f"Sorry, something went wrong: {e}"
 
     async def send_proactive(
@@ -190,6 +204,19 @@ class Gateway:
 
         # Close connection pool
         await ConnectionPool.close()
+
+        # Flush JSONL logs
+        jsonl_logger = get_jsonl_logger()
+        if jsonl_logger:
+            await jsonl_logger.close()
+            logger.debug("JSONL logs flushed")
+
+        # Flush Langfuse data
+        if self._agent:
+            try:
+                await self._agent.flush()
+            except Exception as e:
+                logger.warning(f"Error flushing Langfuse data: {e}")
 
         logger.info("nanoClaw stopped.")
 

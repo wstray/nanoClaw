@@ -27,6 +27,11 @@ def adapt_nanoclaw_tool(
     """
     async def wrapper(**kwargs) -> str:
         """Execute the nanoClaw tool."""
+        logger.debug(f"Executing tool: {tool_info.name} with kwargs: {list(kwargs.keys())}")
+
+        import time
+        tool_start = time.time()
+
         registry = get_tool_registry()
 
         # Handle confirmation
@@ -40,10 +45,14 @@ def adapt_nanoclaw_tool(
 
         # Execute tool through nanoClaw registry
         try:
+            logger.debug(f"Calling registry.execute for {tool_info.name}...")
             result = await registry.execute(tool_info.name, kwargs)
+            tool_time = time.time() - tool_start
+            logger.debug(f"Tool {tool_info.name} completed in {tool_time:.3f}s, result length: {len(str(result))}")
             return str(result)
         except Exception as e:
-            logger.error(f"Tool {tool_info.name} failed: {e}")
+            tool_time = time.time() - tool_start
+            logger.error(f"Tool {tool_info.name} failed after {tool_time:.3f}s: {e}")
             return f"ERROR: {tool_info.name} failed - {e}"
 
     # Build DeepAgents tool schema

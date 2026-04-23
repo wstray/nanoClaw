@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, Field
+from nanoclaw.core.jsonl_logger import JSONLLoggerConfig
 
 
 class OpenRouterConfig(BaseModel):
@@ -99,6 +100,27 @@ class ShellConfig(BaseModel):
     enabled: bool = True
     timeout: int = 30
     confirm_dangerous: bool = Field(default=True, alias="confirmDangerous")
+    inherit_env: bool = Field(default=False, alias="inheritEnv")
+    env_vars: dict[str, str] = Field(default_factory=dict, alias="envVars")
+
+    model_config = {"populate_by_name": True}
+
+
+class RobocorpConfig(BaseModel):
+    """Robocorp RPA configuration."""
+
+    rcc_path: str = Field(default="", alias="rccPath")
+    default_timeout: int = Field(default=300, alias="defaultTimeout")
+    robots_file: str = Field(default="", alias="robotsFile")
+    robots: dict[str, str] = Field(default_factory=dict)
+    """Pre-registered robots: name -> path mapping.
+
+    Example:
+        "robots": {
+            "invoice-bot": "/path/to/invoice-robot",
+            "scraper": "C:/robots/web-scraper"
+        }
+    """
 
     model_config = {"populate_by_name": True}
 
@@ -110,6 +132,7 @@ class ToolsConfig(BaseModel):
     web_search: WebSearchConfig = Field(
         default_factory=WebSearchConfig, alias="webSearch"
     )
+    robocorp: RobocorpConfig = Field(default_factory=RobocorpConfig)
 
     model_config = {"populate_by_name": True}
 
@@ -166,6 +189,23 @@ class DashboardConfig(BaseModel):
     password: Optional[str] = None
 
 
+class LangfuseConfig(BaseModel):
+    """Langfuse observability configuration."""
+
+    enabled: bool = False
+    public_key: str = Field(default="", alias="publicKey")
+    secret_key: str = Field(default="", alias="secretKey")
+    host: str = Field(default="https://cloud.langfuse.com", alias="host")
+    """Langfuse host URL. Use https://us.cloud.langfuse.com for US cloud,
+    or your self-hosted URL."""
+    release: Optional[str] = None
+    """Optional release/version tag for tracking deployments."""
+    environment: Optional[str] = Field(default=None, alias="environment")
+    """Optional environment (e.g., 'production', 'staging', 'development')."""
+
+    model_config = {"populate_by_name": True}
+
+
 class Config(BaseModel):
     """Main configuration model."""
 
@@ -176,6 +216,8 @@ class Config(BaseModel):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
+    jsonl_logging: JSONLLoggerConfig = Field(default_factory=JSONLLoggerConfig)
+    langfuse: LangfuseConfig = Field(default_factory=LangfuseConfig)
 
     model_config = {"populate_by_name": True}
 
@@ -267,3 +309,17 @@ def get_data_path() -> Path:
     data_dir = Path.home() / ".nanoclaw" / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
+
+
+def get_logs_path() -> Path:
+    """Get the logs directory path."""
+    from nanoclaw.core.config import get_config
+
+    config = get_config()
+    if config.jsonl_logging.log_dir:
+        log_dir = Path(config.jsonl_logging.log_dir)
+    else:
+        log_dir = Path.home() / ".nanoclaw" / "logs"
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir

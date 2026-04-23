@@ -66,7 +66,7 @@ nanoClaw is an ultra-lightweight, secure-by-default AI assistant designed for 24
 **Module Structure**:
 - `nanoclaw/core` - Agent loop, context builder, config, LLM client, logging
 - `nanoclaw/tools` - Core tools (shell, files, web, memory, spawn) and registry
-- `nanoclaw/skills` - Built-in skills loaded from disk
+- `nanoclaw/skills` - Example SKILL.md skills and skill loading utilities
 - `nanoclaw/security` - Sandbox, file guard, prompt guard, audit, budget
 - `nanoclaw/memory` - SQLite store for history and memories
 - `nanoclaw/channels` - Gateway, Telegram bot, console, eteams
@@ -74,13 +74,29 @@ nanoClaw is an ultra-lightweight, secure-by-default AI assistant designed for 24
 - `nanoclaw/dashboard` - Local aiohttp server and UI
 - `nanoclaw/deepagents` - DeepAgents framework integration
 
+**Tools vs Skills**:
+- **Tools**: Simple, single-function capabilities registered via `@tool` decorator in ToolRegistry
+  - Examples: `shell_exec`, `file_read`, `web_search`
+  - Used for: Atomic operations, quick actions
+  - Location: `nanoclaw/tools/` modules
+- **Skills**: Complex, multi-file capabilities with SKILL.md documentation
+  - Examples: RPA workflows, research tasks, file organization
+  - Used for: Complex workflows requiring multiple steps
+  - Location: `~/.nanoclaw/workspace/skills/` (SKILL.md format)
+  - Note: Python skills in `nanoclaw/skills/*.py` are deprecated for DeepAgents use
+
 **Runtime Flow**:
 1. Channel receives message (Telegram/console/eteams)
 2. Gateway routes to agent
-3. Agent builds context, selects tools, calls LLM, executes tools
-4. Memory store saves history and facts
-5. Audit log records all actions
-6. Scheduler can send proactive messages via gateway
+3. Agent initializes DeepAgents instance:
+   - Creates workspace directory structure
+   - Copies example skills if needed
+   - Configures SkillsMiddleware with workspace skills directory
+   - Loads core tools via ToolRegistry
+4. Agent builds context, selects tools/skills, calls LLM, executes
+5. Memory store saves history and facts
+6. Audit log records all actions
+7. Scheduler can send proactive messages via gateway
 
 **Execution Patterns**:
 - **ReAct (default)**: User message → LLM (with tools) → tool_calls → parallel execute → LLM → response

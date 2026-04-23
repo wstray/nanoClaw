@@ -12,6 +12,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from nanoclaw.core.jsonl_logger import ToolCallStatus, get_jsonl_logger
 from nanoclaw.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -43,6 +44,7 @@ _core_tools_loaded = False
 _CORE_TOOL_MODULES = (
     "nanoclaw.tools.files",
     "nanoclaw.tools.memory_tools",
+    "nanoclaw.tools.rpa_tools",
     "nanoclaw.tools.shell",
     "nanoclaw.tools.spawn",
     "nanoclaw.tools.web",
@@ -58,6 +60,10 @@ _CORE_TOOL_NAMES = {
     "memory_save",
     "memory_search",
     "spawn_task",
+    "rpa_register",
+    "rpa_list",
+    "rpa_run",
+    "rpa_unregister",
 }
 
 
@@ -191,6 +197,32 @@ class ToolRegistry:
             return f"Unknown tool: {name}"
 
         tool_info = self.tools[name]
+        jsonl_logger = get_jsonl_logger()
+
+        # Extract session_id from arguments if present
+        session_id = arguments.get("_session_id", "unknown")
+        tool_id = arguments.get("_tool_id", f"{name}-{id(arguments)}")
+
+        # Remove internal arguments
+        clean_arguments = {k: v for k, v in arguments.items() if not k.startswith("_")}
+
+        import time
+        start_time = time.time()
+        confirmation_granted = False
+
+        # Log tool call start
+        if jsonl_logger:
+            await jsonl_logger.log_tool_call(
+                session_id=session_id,
+                tool_name=name,
+                tool_id=tool_id,
+                parameters=clean_arguments,
+                result="",
+                status=ToolCallStatus.RUNNING,
+                duration_ms=0,
+                requires_confirmation=tool_info.needs_confirmation,
+                confirmation_granted=False
+            )
 
         # Tools that always need confirmation
         if tool_info.needs_confirmation and confirm_callback:
@@ -201,7 +233,23 @@ class ToolRegistry:
                 f"```\n{json.dumps(arguments, indent=2)}\n```\n\nAllow?"
             )
             if not approved:
+                # Log denied confirmation
+                if jsonl_logger:
+                    elapsed = time.time() - start_time
+                    await jsonl_logger.log_tool_call(
+                        session_id=session_id,
+                        tool_name=name,
+                        tool_id=tool_id,
+                        parameters=clean_arguments,
+                        result="User denied this action",
+                        status=ToolCallStatus.BLOCKED,
+                        duration_ms=int(elapsed * 1000),
+                        requires_confirmation=True,
+                        confirmation_granted=False
+                    )
                 return "User denied this action."
+
+            confirmation_granted = True
 
         try:
             # Handle malformed LLM output: {'parameters': {'query': '...'}}
@@ -210,11 +258,61 @@ class ToolRegistry:
                 arguments = arguments["parameters"]
 
             result = await tool_info.handler(**arguments)
+            elapsed = time.time() - start_time
+
+            # Log successful tool call
+            if jsonl_logger:
+                await jsonl_logger.log_tool_call(
+                    session_id=session_id,
+                    tool_name=name,
+                    tool_id=tool_id,
+                    parameters=clean_arguments,
+                    result=str(result)[:1000],  # Truncate large results
+                    status=ToolCallStatus.SUCCESS,
+                    duration_ms=int(elapsed * 1000),
+                    requires_confirmation=tool_info.needs_confirmation,
+                    confirmation_granted=confirmation_granted
+                )
+
             return str(result)
         except TypeError as e:
-            return f"Invalid arguments for {name}: {e}"
+            elapsed = time.time() - start_time
+            error_msg = f"Invalid arguments for {name}: {e}"
+
+            # Log error
+            if jsonl_logger:
+                await jsonl_logger.log_tool_call(
+                    session_id=session_id,
+                    tool_name=name,
+                    tool_id=tool_id,
+                    parameters=clean_arguments,
+                    result=error_msg,
+                    status=ToolCallStatus.ERROR,
+                    duration_ms=int(elapsed * 1000),
+                    requires_confirmation=tool_info.needs_confirmation,
+                    confirmation_granted=confirmation_granted
+                )
+
+            return error_msg
         except Exception as e:
-            return f"Tool {name} failed: {e}"
+            elapsed = time.time() - start_time
+            error_msg = f"Tool {name} failed: {e}"
+
+            # Log error
+            if jsonl_logger:
+                await jsonl_logger.log_tool_call(
+                    session_id=session_id,
+                    tool_name=name,
+                    tool_id=tool_id,
+                    parameters=clean_arguments,
+                    result=error_msg,
+                    status=ToolCallStatus.ERROR,
+                    duration_ms=int(elapsed * 1000),
+                    requires_confirmation=tool_info.needs_confirmation,
+                    confirmation_granted=confirmation_granted
+                )
+
+            return error_msg
 
     def load_skills(self, skills_dir: str) -> None:
         """

@@ -7,6 +7,8 @@ import os
 import sys
 from typing import Optional
 
+from nanoclaw.core.jsonl_logger import JSONLLogger, LogLevel
+
 # Global verbose flag - also check env var at startup
 _verbose = os.environ.get("NANOCLAW_VERBOSE", "").lower() in ("1", "true", "yes")
 
@@ -28,6 +30,67 @@ def set_verbose(verbose: bool) -> None:
         # Ensure nanoclaw logger has a handler
         setup_logger("nanoclaw", level)
 
+
+class JSONLHandler(logging.Handler):
+    """Custom logging handler that forwards to JSONL logger."""
+
+    def __init__(self, jsonl_logger: JSONLLogger):
+        super().__init__()
+        self.jsonl_logger = jsonl_logger
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Emit a log record to JSONL."""
+        try:
+            # Import asyncio only when needed to avoid sync/async mixing issues
+            import asyncio
+
+            # Get or create event loop
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            # Create async task for logging
+            if loop.is_running():
+                # If loop is running, create task
+                asyncio.create_task(self._async_emit(record))
+            else:
+                # If loop is not running, run directly
+                loop.run_until_complete(self._async_emit(record))
+
+        except Exception:
+            # Don't crash the app if logging fails
+            self.handleError(record)
+
+    async def _async_emit(self, record: logging.LogRecord) -> None:
+        """Async emit method."""
+        try:
+            # Map logging levels to our LogLevel enum
+            level_map = {
+                logging.DEBUG: LogLevel.DEBUG,
+                logging.INFO: LogLevel.INFO,
+                logging.WARNING: LogLevel.WARNING,
+                logging.ERROR: LogLevel.ERROR,
+                logging.CRITICAL: LogLevel.CRITICAL,
+            }
+            level = level_map.get(record.levelno, LogLevel.INFO)
+
+            await self.jsonl_logger.log_system(
+                level=level,
+                component=record.name,
+                message=record.getMessage(),
+                exception=self.format(record) if record.exc_info else None,
+                context={
+                    "function": record.funcName,
+                    "line": record.lineno,
+                    "path": record.pathname,
+                },
+            )
+        except Exception:
+            # Silently fail to avoid infinite loops
+            pass
+
     # Update all existing child loggers
     for name in list(logging.Logger.manager.loggerDict.keys()):
         if name.startswith("nanoclaw"):
@@ -41,6 +104,7 @@ def setup_logger(
     name: str = "nanoclaw",
     level: int = logging.INFO,
     log_file: Optional[str] = None,
+    jsonl_logger: Optional[JSONLLogger] = None,
 ) -> logging.Logger:
     """
     Set up a logger with console and optional file output.
@@ -49,6 +113,7 @@ def setup_logger(
         name: Logger name
         level: Logging level
         log_file: Optional file path for logging
+        jsonl_logger: Optional JSONL logger for structured logging
 
     Returns:
         Configured logger instance
@@ -83,6 +148,12 @@ def setup_logger(
         file_handler.setLevel(level)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
+
+    # JSONL handler (optional)
+    if jsonl_logger and jsonl_logger.config.log_system_logs:
+        jsonl_handler = JSONLHandler(jsonl_logger)
+        jsonl_handler.setLevel(level)
+        logger.addHandler(jsonl_handler)
 
     return logger
 

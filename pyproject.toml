@@ -16,6 +16,7 @@ classifiers = [
 
 dependencies = [
     "aiohttp>=3.9",
+    "aiofiles>=23.0",
     "python-telegram-bot>=20.0",
     "click>=8.0",
     "pydantic>=2.0",
@@ -31,6 +32,8 @@ dependencies = [
     "tavily-python>=0.5.0",
     "langchain-modal>=0.0.2",
     "langchain-community>=0.4.1",
+    "pyinstaller>=6.19.0",
+    "langfuse>=2.0.0",
 ]
 
 [project.optional-dependencies]

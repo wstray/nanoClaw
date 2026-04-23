@@ -148,9 +148,20 @@ class SafeDeepAgent:
 
         # Execute DeepAgents
         try:
+            logger.info(f"Invoking DeepAgents for session {session.session_id}")
+            logger.info(f"Input message length: {len(user_message)} chars")
+            logger.info(f"Session iteration: {session.iterations}")
+
+            invoke_start = time.time()
+
+            logger.info("Starting DeepAgents ainvoke...")
             result = await self._ainvoke_with_timeout(
                 sanitized_inputs, session
             )
+            logger.info("DeepAgents ainvoke completed successfully")
+
+            invoke_time = time.time() - invoke_start
+            logger.info(f"DeepAgents invocation completed in {invoke_time:.2f}s")
 
             # Extract final response content (don't sanitize as tool output)
             # DeepAgents responses are user-facing, not tool outputs
@@ -203,19 +214,32 @@ class SafeDeepAgent:
 
         try:
             # Check if deepagent has astream or ainvoke
+            logger.info(f"DeepAgents invoke timeout set to {timeout}s")
+
             if hasattr(self._agent, "ainvoke"):
+                logger.info("Using async invoke (ainvoke)")
+                logger.info("Calling asyncio.wait_for for ainvoke...")
+
                 result = await asyncio.wait_for(
                     self._agent.ainvoke(inputs),
                     timeout=timeout,
                 )
+                logger.info("ainvoke completed successfully")
+
             elif hasattr(self._agent, "invoke"):
                 # Sync invoke (run in thread pool)
+                logger.info("Using sync invoke (run in executor)")
                 loop = asyncio.get_event_loop()
+
+                logger.info("Running sync invoke in executor...")
                 result = await asyncio.wait_for(
                     loop.run_in_executor(None, self._agent.invoke, inputs),
                     timeout=timeout,
                 )
+                logger.info("Sync invoke completed successfully")
+
             else:
+                logger.error("DeepAgents instance has no invoke method")
                 raise ValueError("DeepAgents instance has no invoke method")
 
             # Track tokens if available
@@ -228,7 +252,8 @@ class SafeDeepAgent:
             return result
 
         except asyncio.TimeoutError:
-            logger.error(f"DeepAgents timeout after {timeout}s")
+            logger.error(f"DeepAgents timeout after {timeout}s - session: {session.session_id}, iteration: {session.iterations}")
+            logger.error(f"Input was: {str(inputs)[:200]}...")  # Log first 200 chars
             raise
 
     def _build_system_prompt(self) -> str:

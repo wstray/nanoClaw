@@ -9,7 +9,15 @@
       "Bash(git commit:*)",
       "WebSearch",
       "Bash(uv pip:*)",
-      "Bash(taskkill /F /IM nanoclaw.exe)"
+      "Bash(taskkill /F /IM nanoclaw.exe)",
+      "Bash(conda info:*)",
+      "Bash(rcc --help)",
+      "Bash(\"D:\\\\tools\\\\rcc.exe\" --help)",
+      "Bash(\"D:\\\\tools\\\\rcc.exe\" run:*)",
+      "Bash(\"D:\\\\tools\\\\rcc.exe\" task:*)",
+      "Bash(openspec list:*)",
+      "Bash(openspec show:*)",
+      "Bash(mkdir:*)"
     ]
   }
 }

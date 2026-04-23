@@ -74,5 +74,9 @@ def test_tool_registry_includes_core_tools() -> None:
         "memory_save",
         "memory_search",
         "spawn_task",
+        "rpa_register",
+        "rpa_list",
+        "rpa_run",
+        "rpa_unregister",
     }
     assert expected.issubset(names)

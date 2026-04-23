@@ -1,0 +1,50 @@
+Local task run, in place, to see how full run execution works
+in your own machine.
+
+Usage:
+  rcc task run [flags]
+
+Aliases:
+  run, r
+
+Flags:
+      --account string       Account used for workspace. OPTIONAL
+      --dev                  Use devTasks instead of normal tasks. For development work only. Stragegy selection.
+  -e, --environment string   Full path to the 'env.json' development environment data file.
+  -f, --force                Force conda cache update (only for new environments).
+      --graceperiod int      What is grace period buffer in minutes on top of validity minutes (minimum 5 minutes). (default 5)
+  -h, --help                 help for run
+      --interactive          Allow robot to be interactive in terminal/command prompt. For development only, not for production!
+  -m, --minutes int          How many minutes the authorization should be valid for (minimum 15 minutes). (default 15)
+      --no-outputs           Do not capture stderr/stdout into files.
+  -r, --robot string         Full path to the 'robot.yaml' configuration file. (default "robot.yaml")
+  -s, --space string         Client specific name to identify this environment. (default "user")
+  -t, --task string          Task to run from the configuration file.
+  -w, --workspace string     Optional workspace id to get authorization tokens for. OPTIONAL
+
+Global Flags:
+      --anything string        freeform string value that can be set without any effect, for example CLI versioning/reference
+      --bundled                used to tell rcc, that this is bundled use (do not use, unless you know what you are doing)
+      --colorless              do not use colors in CLI UI
+      --config string          config file (default is $ROBOCORP_HOME/rcc.yaml)
+      --controller string      internal, DO NOT USE (unless you know what you are doing) (default "user")
+      --debug                  to get debug output where available (not for normal production use; also RCC_VERBOSITY=debug)
+      --externally-managed     mark created Python environments as EXTERNALLY-MANAGED (PEP 668)
+      --liveonly               do not create base environment from live ... DANGER! For containers only!
+      --lockless               do not use file locking ... DANGER!
+      --log-hide stringArray   hide logging output that matches given text fragment and this option can be given multiple times
+      --no-build               never allow building new environments, only use what exists already in hololib (also RCC_NO_BUILD=1)
+      --no-pyc-management      rcc wont do any .pyc file management ... DO NOT USE (unless you know what you are doing)
+      --no-retry-build         no retry in case of first environment build fails, just report error immediately
+      --no-temp-management     rcc wont do any temp directory management ... DO NOT USE (unless you know what you are doing)
+      --nocache                do not use cache for credentials and tokens, always request them from cloud
+      --numbers                put line numbers on rcc produced log output
+      --pprof string           Filename to save profiling information.
+      --silent                 be less verbose on output (also RCC_VERBOSITY=silent)
+      --strict                 be more strict on environment creation and handling
+      --tag string             semantic reason/context, why are you invoking rcc (default "transient")
+      --timeline               print timeline at the end of run
+      --trace                  to get trace output where available (not for normal production use; also RCC_VERBOSITY=trace)
+      --unmanaged              work with unmanaged holotree spaces, DO NOT USE (unless you know what you are doing)
+      --warranty-voided        experimental, warranty voided, dangerous mode ... DO NOT USE (unless you know what you are doing)
+      --workers int            scale background workers manually (do not use, unless you know what you are doing)

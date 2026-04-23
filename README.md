@@ -18,6 +18,7 @@ nanoClaw:   ~3,000 lines, secure by default, 2-min setup
 - **Background tasks** - spawn long-running research jobs
 - **Scheduled jobs** - cron-like recurring tasks
 - **Web dashboard** - monitor activity, manage settings
+- **Observability** - Langfuse integration for tracing and monitoring
 
 ## Quick Start
 
@@ -220,6 +221,39 @@ ruff check nanoclaw/
 - Telegram Bot Token (from @BotFather)
 - LLM API key (any provider above)
 - Optional: Brave Search API key
+
+## Langfuse Observability
+
+nanoClaw integrates with [Langfuse](https://langfuse.com) for comprehensive LLM tracing and observability.
+
+### Langfuse Setup
+
+1. Create a free account at [cloud.langfuse.com](https://cloud.langfuse.com) (or use self-hosted)
+2. Get your API keys from Settings → API Keys
+3. Run `nanoclaw init` and enable Langfuse in Step 4, or configure manually:
+
+```json
+{
+  "langfuse": {
+    "enabled": true,
+    "publicKey": "pk-lf-...",
+    "secretKey": "sk-lf-...",
+    "host": "https://cloud.langfuse.com"
+  }
+}
+```
+
+### Features
+
+- **Automatic tracing** - All agent interactions are traced with full context
+- **Session tracking** - Conversations are grouped by session ID
+- **User attribution** - Track usage per user
+- **Model metadata** - See which model and provider was used
+- **Cost tracking** - Monitor token usage and costs (via Langfuse)
+
+### Viewing Your Traces
+
+Access your traces at [cloud.langfuse.com](https://cloud.langfuse.com) (or your self-hosted instance).
 
 ## License
 

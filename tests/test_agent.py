@@ -168,3 +168,37 @@ async def test_agent_executes_tool_and_returns_response() -> None:
     assert tool_msgs
     assert "<tool_result" in tool_msgs[0]["content"]
     assert memory.history[0]["role"] == "user"
+
+
+def test_get_platform_default_path_windows() -> None:
+    """Platform default PATH should include System32 on Windows."""
+    import sys
+    from nanoclaw.core.agent import get_platform_default_path
+
+    # Mock Windows platform
+    original_platform = sys.platform
+    sys.platform = "win32"
+
+    try:
+        path = get_platform_default_path()
+        assert "System32" in path
+        assert ";" in path  # Windows separator
+    finally:
+        sys.platform = original_platform
+
+
+def test_get_platform_default_path_unix() -> None:
+    """Platform default PATH should include /usr/bin on Unix."""
+    import sys
+    from nanoclaw.core.agent import get_platform_default_path
+
+    # Mock Unix platform
+    original_platform = sys.platform
+    sys.platform = "linux"
+
+    try:
+        path = get_platform_default_path()
+        assert "/usr/bin" in path
+        assert ":" in path  # Unix separator
+    finally:
+        sys.platform = original_platform

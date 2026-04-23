@@ -1,4 +1,9 @@
-"""Robocorp RPA robot execution skill with name-based registry."""
+"""Robocorp RPA robot execution skill with name-based registry.
+
+DEPRECATED: This module is deprecated. Use nanoclaw.tools.rpa_tools instead.
+The tools in this module (robocorp_register, robocorp_list, robocorp_run,
+robocorp_unregister) are replaced by rpa_register, rpa_list, rpa_run, rpa_unregister.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +15,12 @@ from nanoclaw.tools.registry import tool
 from nanoclaw.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Log deprecation warning when module is loaded
+logger.warning(
+    "DEPRECATED: nanoclaw.skills.robocorp is deprecated. "
+    "Use rpa_register, rpa_list, rpa_run, rpa_unregister tools instead."
+)
 
 # Robot registry file: ~/.nanoclaw/robots.json
 # Format: {"name": "/absolute/path", ...}
